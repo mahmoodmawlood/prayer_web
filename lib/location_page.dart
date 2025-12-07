@@ -626,7 +626,7 @@ void _closeApp(){
     //int y = now.year; int m = now.month; int d = now.day;
     // 
       if(y%4 == 0){maxdays[1]=29;}
-      if( y > 500 && y < 2500 && m > 0 && m<= 12 && d > 0 && d <= maxdays[m-1]  ) {
+      if( y >= 1550 && y <= 2600 && m > 0 && m<= 12 && d > 0 && d <= maxdays[m-1]  ) {
       int k = 0; // int i = 1;
       for(int i = 1; i<=6; i++){
         double sinalt = sin(altitude[i-1]*rads);
@@ -764,36 +764,60 @@ List<String> _hijree(int y, int m, int d, double lat, double lng,  double tz){
   glong = glong * rads;
   // DateTime now = DateTime.now();
   int gyear1 = y; int gmonth1 = m; int gday1 = d;
-  //int hour1 = now.hour; int minit = now.minute;
-  //print('${gyear1}  ${gmonth1} ${gday1}');
+  int gyear2 = y; int gmonth2 = m; int gday2 = d;  
+  double birth_time = 0.0;
+  DateTime now = DateTime.now();
+  DateTime previous_moon = now; DateTime present_moon = now; DateTime next_moon = now;
+  DateTime cand_moon = now;
 
 
-// do{   // outer cycle, remove it later
-
-  double y_shift = 0.0;
   int h_first = 0;  int h_day = 0; 
-
-  do {                             // convergence inner cycle start
-    y_shift += 0.1;
-    List result = birth(gyear1,gmonth1,gday1, y_shift, zone);
-    int gyear2 = result[0]; int gmonth2 = result[1]; int gday2 = result[2]; 
-      double birth_time = result[3];
-
+  double jd = julian(gyear1,gmonth1,gday1);
+  int K0 = ((jd - 2451550.09765) / 29.530588853).round();
+  for(int K = K0 - 3; K<= K0+3; K += 1){
+    List result = birth(gyear1, gmonth1, gday1, K , zone);
+    gyear2 = result[0]; gmonth2 = result[1]; gday2 = result[2]; 
+    birth_time = result[3];
+    double jd1 = julian(gyear1, gmonth1, gday1);
+    double jd2 = julian(gyear2, gmonth2, gday2);
+    double diff = jd1 - jd2;
+    int hr = birth_time.floor();
+    double min_part = (birth_time - hr)*60.0;
+    int min = min_part.floor();
+    double sec_part = (min_part - min)*60.0;
+    int sec = sec_part.floor();
+    if(diff>=29.0 && diff<=60.0){
+        previous_moon = DateTime (gyear2, gmonth2, gday2, hr, min, sec);
+      }
+    if(diff>=0.0 && diff<=30.0 ){
+        present_moon = DateTime (gyear2, gmonth2, gday2, hr, min, sec);
+      }
+    if(diff<0.0 && diff>=-30.0 ){
+        next_moon = DateTime (gyear2, gmonth2, gday2, hr, min, sec);
+        //break;
+      }
+    }
+  cand_moon = present_moon;   
+  do {
+    gyear2 = cand_moon.year; gmonth2 = cand_moon.month; gday2 = cand_moon.day;
                                 // get sunset time from function maghrib 
-    double sunset = maghrib(gyear2, gmonth2, gday2, zone);
+    double sunset = maghrib(cand_moon.year, cand_moon.month, cand_moon.day, zone);
     int shh = sunset.floor();                                      //     ***** sunset hourr
     int smm = ((((sunset - shh)*60)*100).round()/100).floor();     //     ***** sunset minute
-
-    //print('Birth ${birth_time}, SunSise ${sunset}');
-    if(birth_time < sunset) { 
-      h_first = gday2 + 1;
-      List<double> moonloc = moon(gyear2, gmonth2 , gday2.toDouble(), shh, smm, lng, lat, tz); // **** moon loc at sunset  
-      if(moonloc[1]<2.0 && moonloc[2]<0.2){
-            h_first = gday2 + 2;
+      List<double> moonloc = moon(cand_moon.year, cand_moon.month , cand_moon.day.toDouble(), shh, smm, 44.392, 35.467, zone); // **** moon loc at sunset  
+      double moonalt = moonloc[1];
+      double illum = moonloc[2];
+       
+    //  print('Birth ${birth_time}, SunSise ${sunset}');
+      if(birth_time >= sunset) { 
+        h_first = cand_moon.day + 2;
+        }
+      if(birth_time<sunset && moonalt>2.0 && illum>0.2){
+        h_first = cand_moon.day + 1;
+      } else { 
+        h_first = cand_moon.day + 2;
       }
-    
-      } else { h_first = gday2 + 2;
-    }
+
     if(h_first > maxdays[gmonth2-1]){
       h_first -= maxdays[gmonth2-1];
       gmonth2 += 1; 
@@ -820,14 +844,17 @@ List<String> _hijree(int y, int m, int d, double lat, double lng,  double tz){
       int interval = (jd1 - jd2).toInt();
       h_day = 1 + interval;
     }
-
-  } while(h_day>30  || h_day == 0);                  // inner cycle end do
+    if(h_day<=0){
+      cand_moon = previous_moon;
+      continue;
+    }
+}while(h_day<=0);
 
                                       //  get hijre year from function hijree()
   List<int> result1 = hijree(gyear1,gmonth1,gday1);
   int hijre = result1[0]; int i_m = result1[1]; int d_d = result1[2];
-  if((h_day - d_d) >= 25) {i_m = i_m - 1;}
-  if((d_d - h_day) >= 25) {i_m = i_m + 1;}
+  if((h_day - d_d) >= 22) {i_m = i_m - 1;}
+  if((d_d - h_day) >= 22) {i_m = i_m + 1;}
 
   if(i_m > 12) {
     i_m = 1;
@@ -935,18 +962,19 @@ double julian(int year, int month, int day) {
 // ----------------- End of Julian function
 
             // BIRTH ROUTINE  moon Birth day and time
-List<dynamic> birth(int gyear1, int gmonth1,int gday1, double y_shift, double zone) {
+List<dynamic> birth(int gyear1, int gmonth1,int gday1, int K, double zone) {
   double year = gyear1.toDouble();
   double month = gmonth1.toDouble();
   double day = gday1.toDouble();
-  double t = (year - 2000.0)/100.0;
-  double dt = 0.0;
-  if(year <948.0) { dt = 2177.0 + 497*t + 44.1*t*t;}
-  if(year > 948.0){ dt = 102.0 + t*(102.0 + 25.3*t); } 
-	if(year >= 2000.0 && year <= 2100.0) { dt = dt + 0.37*(year - 2100.0);}
-  year = year + (month + 1.0 - y_shift)/12.0;
-  
-  int K = ((year - 2000.0)*12.3685).floor();
+    /*  double t = (year - 2000.0)/100.0;
+      double dt = 0.0;
+    //  if(year <948.0) { dt = 2177.0 + 497*t + 44.1*t*t;}
+      if(year > 948.0){ dt = 102.0 + t*(102.0 + 25.3*t); } 
+      if(year >= 2000.0 && year <= 2100.0) { dt = dt + 0.37*(year - 2100.0);}
+      year = year + (month + 1.0 - y_shift)/12.0;
+      
+      int K = ((year - 2000.0)*12.3685).floor();
+    */
   double TT = K/1236.85;
   double E = 1.0 - 0.0025160*TT - 0.00000740*TT*TT;
 	double MS = 2.55340 + 29.10535670*K - .00000140*TT*TT - .000000110*TT*TT*TT;
@@ -969,8 +997,11 @@ List<dynamic> birth(int gyear1, int gmonth1,int gday1, double y_shift, double zo
 	double A12= 161.720 + 24.1981540*K;
 	double A13= 239.560 + 25.5130990*K;
 	double A14= 331.550 + 3.59251800*K;
-	double JDE = 2451550.097660 + 29.5305888610*K + 0.000154370*TT*TT - 0.000000150*TT*TT*TT 
+//	double JDE = 2451550.097660 + 29.5305888610*K + 0.000154370*TT*TT - 0.000000150*TT*TT*TT 
+//			+ 0.000000000730*TT*TT*TT*TT;
+	double JDE = 2451550.097650 + 29.5305888530*K + 0.00013370*TT*TT - 0.000000150*TT*TT*TT 
 			+ 0.000000000730*TT*TT*TT*TT;
+
 	double CORR1 = -0.40720*SIND(MP) + 0.172410*E*SIND(MS)+0.016080*SIND(2*MP) + 
 			0.010390*SIND(2*F)+0.007390*E*SIND(MP-MS)-0.005140*E*SIND(MP+MS) + 
 			0.002080*E*E*SIND(2*MS) - 0.001110*SIND(MP-2*F)-0.000570*SIND(MP+2*F) + 
@@ -983,9 +1014,13 @@ List<dynamic> birth(int gyear1, int gmonth1,int gday1, double y_shift, double zo
 	double CORR2 = (325*SIND(A1)+ 165*SIND(A2)+164*SIND(A3)+126*SIND(A4)+110*SIND(A5)+62*SIND(A6) + 
 			60*SIND(A7) + 56*SIND(A8) + 47*SIND(A9)+42*SIND(A10)+40*SIND(A11)+37*SIND(A12) + 
 			35*SIND(A13)+23*SIND(A14))/1000000.0;
-	JDE = JDE + CORR1 + CORR2 + 0.50 + zone/24; // zone/24 is added to make local time
-	int ZZ = JDE.toInt();
-	double FF = JDE - ZZ;
+	JDE = JDE + CORR1 + CORR2; // zone/24 is added later  to make local time
+  double yearApprox = 2000.0 + (JDE - 2451545.0) / 365.2425;
+  double dt = deltaTSeconds(yearApprox);
+  double JD = JDE - dt / 86400.0;
+  JD = JD + 0.5 + zone/24.0;   // now it is local JD
+	int ZZ = JD.toInt();
+	double FF = JD - ZZ;
   int AA = 0;
   if(ZZ < 2299161){
     AA = ZZ;
@@ -1374,6 +1409,60 @@ double ACOSD(double x){
     return acos(x)*180.0/pi;
 }
 
+double deltaTSeconds(double year) {
+  // year is decimal year, e.g. 1071.5
+  if (year < -500) {
+    double u = (year - 1820.0) / 100.0;
+    return -20.0 + 32.0 * u * u;
+  } else if (year < 500) {
+    double u = year / 100.0;
+    return 10583.6 - 1014.41 * u + 33.78311 * u * u - 5.952053 * pow(u, 3)
+        - 0.1798452 * pow(u, 4) + 0.022174192 * pow(u, 5) + 0.0090316521 * pow(u, 6);
+  } else if (year < 1600) {
+    double u = (year - 1000.0) / 100.0;
+    return 1574.2 - 556.01 * u + 71.23472 * u * u + 0.319781 * pow(u, 3)
+        - 0.8503463 * pow(u, 4) - 0.005050998 * pow(u, 5) + 0.0083572073 * pow(u, 6);
+  } else if (year < 1700) {
+    double t = year - 1600.0;
+    return 120.0 - 0.9808 * t - 0.01532 * t * t + pow(t, 3) / 7129.0;
+  } else if (year < 1800) {
+    double t = year - 1700.0;
+    return 8.83 + 0.1603 * t - 0.0059285 * t * t + 0.00013336 * pow(t, 3)
+        - pow(t, 4) / 1174000.0;
+  } else if (year < 1860) {
+    double t = year - 1800.0;
+    return 13.72 - 0.332447 * t + 0.0068612 * t * t + 0.0041116 * pow(t, 3)
+        - 0.00037436 * pow(t, 4) + 0.0000121272 * pow(t, 5)
+        - 0.0000001699 * pow(t, 6) + 0.000000000875 * pow(t, 7);
+  } else if (year < 1900) {
+    double t = year - 1860.0;
+    return 7.62 + 0.5737 * t - 0.251754 * t * t + 0.01680668 * pow(t, 3)
+        - 0.0004473624 * pow(t, 4) + pow(t, 5) / 233174.0;
+  } else if (year < 1920) {
+    double t = year - 1900.0;
+    return -2.79 + 1.494119 * t - 0.0598939 * t * t + 0.0061966 * pow(t, 3)
+        - 0.000197 * pow(t, 4);
+  } else if (year < 1941) {
+    double t = year - 1920.0;
+    return 21.20 + 0.84493 * t - 0.076100 * t * t + 0.0020936 * pow(t, 3);
+  } else if (year < 1961) {
+    double t = year - 1950.0;
+    return 29.07 + 0.407 * t - (t * t) / 233.0 + (t * t * t) / 2547.0;
+  } else if (year < 1986) {
+    double t = year - 1975.0;
+    return 45.45 + 1.067 * t - (t * t) / 260.0 - (t * t * t) / 718.0;
+  } else if (year < 2005) {
+    double t = year - 2000.0;
+    return 63.86 + 0.3345 * t - 0.060374 * t * t + 0.0017275 * pow(t, 3)
+        + 0.000651814 * pow(t, 4) + 0.00002373599 * pow(t, 5);
+  } else if (year < 2050) {
+    double t = year - 2000.0;
+    return 62.92 + 0.32217 * t + 0.005589 * t * t;
+  } else {
+    double u = (year - 1820.0) / 100.0;
+    return -20.0 + 32.0 * u * u; // rough extrapolation for years >= 2050
+  }
+}
 
 
 // ***************** END OF WIDGET BUILD
